@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.4)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
+# set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 project(SOEM C)
 
 set(SOEM_INCLUDE_INSTALL_DIR include/soem)
@@ -64,6 +64,7 @@ add_library(soem STATIC
   ${OSAL_SOURCES}
   ${OSHW_SOURCES}
   ${OSHW_EXTRA_SOURCES})
+target_include_directories(soem PUBLIC soem/ osal/ osal/${OS}/ oshw/${OS}/)
 target_link_libraries(soem ${OS_LIBS})
 
 message("LIB_DIR: ${SOEM_LIB_INSTALL_DIR}")

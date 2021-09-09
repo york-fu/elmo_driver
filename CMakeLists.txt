@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(ec_elmo C)
 
-add_subdirectory(SOEO)
+add_subdirectory(SOEM)
 
 include_directories(include)
 include_directories(SOEM)
