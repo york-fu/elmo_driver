@@ -7,8 +7,10 @@ include_directories(include)
 include_directories(SOEM)
 
 aux_source_directory(./src DIR_SRCS)
-add_executable(${PROJECT_NAME} 
-  ${DIR_SRCS}  
+add_library(${PROJECT_NAME} STATIC
+  ${DIR_SRCS}
 )
-
+target_include_directories(${PROJECT_NAME} PUBLIC ./include)
 target_link_libraries(${PROJECT_NAME} soem)
+
+add_subdirectory(test)
