@@ -12,9 +12,11 @@
 char IOmap[4096];
 OSAL_THREAD_HANDLE thread_check;
 OSAL_THREAD_HANDLE thread_sync;
+pthread_mutex_t mtx_IOMap;
 int expectedWKC;
 volatile int wkc;
 boolean inOP;
+uint8 _sync_running = 0;
 uint8 currentgroup = 0;
 int oloop, iloop;
 int error_num = 0; //全局错误标识
@@ -24,8 +26,9 @@ uint32_t encoder_range[12] = {
     BIT_20, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20,
     BIT_19, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20};
 
-double JonitLimitmax[] = {90, 90, 120, 65, 75, 220, 45, 60, 120, 120, 105, 110};
-double JonitLimitmin[] = {-90, 30, -60, -60, -40, 0, 15, 0, -60, 25, -5, -110};
+double JonitLimitmax[] = {180, 90, 120, 65, 75, 220, 45, 60, 120, 120, 105, 110};
+double JonitLimitmin[] = {0, 30, -60, -60, -40, 0, 15, 0, -60, 25, -5, -110};
+uint32_t rated_current[12] = {0};
 
 struct JointsRead *JointI[12];
 struct JointsWrite *JointO[12];
@@ -156,19 +159,17 @@ int elmo_setup(uint16 slave)
   int wkc = 0, wc = 0;
   float64 pmin = -180, pmax = 180;
   uint16 index, check_cnt = 0;
-  uint8 subindex, id; //0不显示设置信息
+  uint8 subindex, id;
   int32 value_i32 = 0;
+  uint32 value_u32 = 0;
   float64 pos;
 
-  if (slave > 1)
-  {
-    if (slave < 9)
-      id = slave - 2;
-    else
-      id = slave - 3;
-  }
+  if (slave > 0)
+    id = slave - 1;
   else
+  {
     id = 0;
+  }
 
   //Non-modulo motion.
   pmin = JonitLimitmin[id];
@@ -184,12 +185,13 @@ int elmo_setup(uint16 slave)
   sdo_write_i32(slave, 0x607B, 2, value_i32); //Max Position range limit xm[2]
 
   //位置读取
+  check_cnt = 0;
   index = 0x6064, subindex = 0; //position actual value
   do
   {
     wkc = 0;
     wkc = sdo_read_i32(slave, index, subindex, &value_i32); //wc++;
-    pos = (float64)value_i32 * (360.0 / encoder_range[id]);    // 上电角度位置
+    pos = (float64)value_i32 * (360.0 / encoder_range[id]); // 上电角度位置
     check_cnt++;
     if (check_cnt > 100)
     {
@@ -200,38 +202,38 @@ int elmo_setup(uint16 slave)
   } while (wkc == 0);
   printf("Joint%d\t  Start_Angle: %3.1f\t ", id + 1, pos);
 
-  if (pos > 180)
+  if (pos > 360)
   {
     error_num = 3;
-    printf(" >180\n");
+    printf(" >360\n");
   }
-  else if (pos < -180)
+  else if (pos < 0)
   {
     error_num = 3;
-    printf(" <-180\n");
+    printf(" <0\n");
   }
   else
   {
-    printf(" normal\n");
+    printf(" OK\n");
   }
-  //SDO set from TWINCAT
-  sdo_write_u16(slave, 0x605e, 0, 0);
-  sdo_write_u16(slave, 0x6060, 0, 8);
-  sdo_write_u32(slave, 0x6065, 0, 436970);
-  sdo_write_u16(slave, 0x6066, 0, 20);
-  sdo_write_i32(slave, 0x6067, 0, 100);
-  sdo_write_u16(slave, 0x6068, 0, 1);
-  sdo_write_u16(slave, 0x606e, 0, 1);
-  sdo_write_u16(slave, 0x6070, 0, 1);
-  sdo_write_u32(slave, 0x6075, 0, 28280);
-  sdo_write_u32(slave, 0x6076, 0, 28280);
-  sdo_write_u32(slave, 0x607f, 0, 5242880);
-  sdo_write_u32(slave, 0x6087, 0, 10000000);
-  sdo_write_u8(slave, 0x60C2, 1, 2);
-  sdo_write_u32(slave, 0x60c5, 0, 72900);
-  sdo_write_u32(slave, 0x60c6, 0, 72900);
-  sdo_write_u32(slave, 0x60fc, 0, 4284);
-  sdo_write_u32(slave, 0x60ff, 0, 210922);
+
+  // rated current
+  check_cnt = 0;
+  index = 0x6075, subindex = 0;
+  do
+  {
+    wkc = 0;
+    wkc = sdo_read_i32(slave, index, subindex, &value_u32); //wc++;
+    rated_current[id] = value_u32;
+    check_cnt++;
+    if (check_cnt > 100)
+    {
+      printf("Read rated current failed of joint%d!\n", id + 1);
+      exit(0);
+    }
+    osal_usleep(1000);
+  } while (wkc == 0);
+  // printf("Joint%d\t  rated current: %d\n ", id + 1, value_u32);
 
   wkc = 0, wc = 0;
   //PDO Map set by SOD
@@ -318,6 +320,9 @@ int16_t elmo_config(char *ifname)
   ec_config_map(&IOmap);
   ec_configdc();
 
+  if (error_num != 0)
+    return 3;
+
   oloop = ec_slave[0].Obytes;
   if ((oloop == 0) && (ec_slave[0].Obits > 0))
     oloop = 1;
@@ -355,7 +360,7 @@ int16_t elmo_config(char *ifname)
   ec_slave[0].state = EC_STATE_INIT;
   /* request INIT state for all slaves */
   ec_writestate(0);
-  return 3;
+  return 4;
 }
 
 OSAL_THREAD_FUNC ecatcheck(void *ptr)
@@ -363,10 +368,11 @@ OSAL_THREAD_FUNC ecatcheck(void *ptr)
   int slave;
   (void)ptr; /* Not used */
 
-  while (1)
+  while (_sync_running)
   {
     if (inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
     {
+      printf("wkc:%d  expectedWKC:%d\n", wkc, expectedWKC);
       /* one ore more slaves are not responding */
       ec_group[currentgroup].docheckstate = FALSE;
       ec_readstate();
@@ -433,13 +439,21 @@ OSAL_THREAD_FUNC ecatcheck(void *ptr)
 int16 joint_is_error()
 {
   uint16 SWord;
+  uint16 index, value_u16;
+  uint8 subindex, value_u8;
   for (int i = 0; i < joint_num; i++)
   {
     SWord = JointI[i]->status_word;
     SWord = SWord & 0x6f;
     if (SWord != 0x27)
     {
-      printf("Joint %d state error, status_word:0x%x\n", i+1, JointI[i]->status_word);
+      printf("Joint %d state error, status_word:0x%x\n", i + 1, JointI[i]->status_word);
+      index = 0x1001, subindex = 0;
+      sdo_read_u8(i + 1, index, subindex, &value_u8);
+      printf("0x%x:%d=0x%x\n", index, subindex, value_u8);
+      index = 0x603F, subindex = 0;
+      sdo_read_u16(i + 1, index, subindex, &value_u16);
+      printf("0x%x:%d=0x%x\n", index, subindex, value_u16);
       return i + 1;
     }
   }
@@ -452,14 +466,17 @@ OSAL_THREAD_FUNC_RT sync_thread(void *ptr)
   double cycle_time = 0.001; // s
   struct timespec next_time;
   clock_gettime(CLOCK_MONOTONIC, &next_time);
-  while (1)
+  while (_sync_running)
   {
+    pthread_mutex_lock(&mtx_IOMap);
     ec_send_processdata();
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
-    if(joint_is_error())
+    if (joint_is_error())
     {
+      pthread_mutex_unlock(&mtx_IOMap);
       exit(EXIT_FAILURE);
     }
+    pthread_mutex_unlock(&mtx_IOMap);
 
     next_time.tv_sec += (next_time.tv_nsec + cycle_time * 1e9) / 1e9;
     next_time.tv_nsec = (int)(next_time.tv_nsec + cycle_time * 1e9) % (int)1e9;
@@ -488,6 +505,7 @@ int8 single_joint_enable(uint16 id)
     return 1;
   }
   uint16 SWord;
+  JointO[id - 1]->mode_of_opration = MODE_CSP;
   JointO[id - 1]->target_position = JointI[id - 1]->position_actual_value;
   JointO[id - 1]->target_velocity = 0;
   JointO[id - 1]->target_torque = 0;
@@ -508,6 +526,7 @@ int8 joint_enable(void)
 {
   int8 result = 0;
   printf("Wait %d all joint enable...\n", joint_num);
+  osal_usleep(1000);
   for (int j = 1; j <= joint_num; j++)
   {
     for (int c = 0; c < 5000; c++)
@@ -529,11 +548,12 @@ int8 joint_enable(void)
 int8_t ec_elmo_init(char *ifname)
 {
   int16_t ret = 0;
+  _sync_running = 1;
   osal_thread_create(&thread_check, 128000, &ecatcheck, (void *)&ctime);
   ret = elmo_config(ifname);
   if (ret != 0)
   {
-    return ret;
+    return 1;
   }
   ret = structural_map();
   if (ret != 0)
@@ -541,12 +561,17 @@ int8_t ec_elmo_init(char *ifname)
     printf("structural map failed, return %d\n", ret);
     return 2;
   }
-  joint_enable();
+  ret = joint_enable();
+  if (ret != 0)
+  {
+    return 3;
+  }
+  pthread_mutex_init(&mtx_IOMap, NULL);
   osal_thread_create_rt(&thread_sync, 204800, &sync_thread, NULL);
   if (ret != 0)
   {
     printf("joint enable failed, return %d\n", ret);
-    return 3;
+    return 4;
   }
   return 0;
 }
