@@ -196,6 +196,7 @@ int elmo_setup(uint16 slave)
     if (check_cnt > 100)
     {
       printf("Read position failed of joint%d!\n", id + 1);
+      ec_close();
       exit(0);
     }
     osal_usleep(1000);
@@ -229,6 +230,7 @@ int elmo_setup(uint16 slave)
     if (check_cnt > 100)
     {
       printf("Read rated current failed of joint%d!\n", id + 1);
+      ec_close();
       exit(0);
     }
     osal_usleep(1000);
@@ -295,6 +297,36 @@ void set_config_hook()
       slave->PO2SOconfig = elmo_setup;
     }
   }
+}
+
+int8_t set_ec_state(ec_state sta)
+{
+  int chk;
+  ec_slave[0].state = sta;
+  /* send one valid process data to make outputs in slaves happy*/
+  pthread_mutex_lock(&mtx_IOMap);
+  ec_send_processdata();
+  ec_receive_processdata(EC_TIMEOUTRET);
+  pthread_mutex_unlock(&mtx_IOMap);
+  /* request sta state for all slaves */
+  ec_writestate(0);
+  chk = 10;
+  /* wait for all slaves to reach sta state */
+  do
+  {
+    pthread_mutex_lock(&mtx_IOMap);
+    ec_send_processdata();
+    ec_receive_processdata(EC_TIMEOUTRET);
+    ec_statecheck(0, sta, 50000);
+    pthread_mutex_unlock(&mtx_IOMap);
+  } while (chk-- && (ec_slave[0].state != sta));
+
+  if (ec_slave[0].state == sta)
+  {
+    printf("Set state reached for all slaves.\n");
+    return 0;
+  }
+  return 1;
 }
 
 int16_t elmo_config(char *ifname)
@@ -372,7 +404,6 @@ OSAL_THREAD_FUNC ecatcheck(void *ptr)
   {
     if (inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
     {
-      printf("wkc:%d  expectedWKC:%d\n", wkc, expectedWKC);
       /* one ore more slaves are not responding */
       ec_group[currentgroup].docheckstate = FALSE;
       ec_readstate();
@@ -474,6 +505,8 @@ OSAL_THREAD_FUNC_RT sync_thread(void *ptr)
     if (joint_is_error())
     {
       pthread_mutex_unlock(&mtx_IOMap);
+      set_ec_state(EC_STATE_PRE_OP);
+      ec_close();
       exit(EXIT_FAILURE);
     }
     pthread_mutex_unlock(&mtx_IOMap);

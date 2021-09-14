@@ -21,6 +21,8 @@ void joint_move(uint8_t id, double_t goal_pos, double_t vel)
   T = fabs(A) / vel;
   total_cnt = (uint32_t)(T / dt);
   printf("start:%f stop:%f T:%f \n", joint_data[id - 1].position, goal_pos, T);
+  if (fabs(A) < 1e-4)
+    return;
 
   clock_gettime(CLOCK_MONOTONIC, &next_time);
   while (test_running)
@@ -93,13 +95,13 @@ double_t get_triangular_wave(double_t A, double_t T, double_t b, double_t dt)
 
 void set_joint_vel(double_t vel)
 {
-  joint_param[0].torque = (vel - joint_data[0].velocity) * 0.06;
+  joint_param[0].torque = (vel - joint_data[0].velocity) * 0.07;
   set_joint_torque(joint_ids, 1, joint_param);
 }
 
 void set_joint_pos(double_t pos)
 {
-  double_t goal_vel = (pos - joint_data[0].position) * 60;
+  double_t goal_vel = (pos - joint_data[0].position) * 70;
   set_joint_vel(goal_vel);
 }
 
@@ -117,9 +119,9 @@ OSAL_THREAD_FUNC_RT control_thread(void *ptr)
   {
     get_joint_data(joint_ids, 1, joint_data);
 
-    joint_param[0].position = get_sin_wave(20, 4, initial_position, dt);
     // joint_param[0].position = get_square_wave(0.5, 1, initial_position, dt);
-    // joint_param[0].position = get_triangular_wave(20, 2, initial_position, dt);
+    // joint_param[0].position = get_triangular_wave(10, 1, initial_position, dt);
+    joint_param[0].position = get_sin_wave(5, 1, initial_position, dt);
     set_joint_position(joint_ids, 1, joint_param);
 
     // joint_param[0].velocity = get_square_wave(10, 1, 0, dt);
@@ -128,10 +130,9 @@ OSAL_THREAD_FUNC_RT control_thread(void *ptr)
     // joint_param[0].torque = get_square_wave(2, 0.01, 0, dt);
     // set_joint_torque(joint_ids, 1, joint_param);
 
-    // set_joint_vel(get_square_wave(20, 0.5, 0, dt));
+    // set_joint_vel(get_square_wave(20, 1, 0, dt));
     // set_joint_pos(get_square_wave(0.5, 1, initial_position, dt));
-
-    // set_joint_pos(get_sin_wave(10, 4, initial_position, dt));
+    // set_joint_pos(get_sin_wave(5, 1, initial_position, dt));
 
     count++;
 
@@ -162,7 +163,7 @@ int main(int argc, char *argv[])
   {
     return 1;
   }
-  joint_move(1, initial_position, 20);
+  joint_move(1, initial_position, 15);
   osal_usleep(500 * 1000);
 
   osal_thread_create_rt(&thread_control, 204800, &control_thread, NULL);

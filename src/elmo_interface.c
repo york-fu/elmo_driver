@@ -22,6 +22,8 @@ int8_t hard_init()
 int8_t hard_exit()
 {
   _sync_running = 0;
+  osal_usleep(2000);
+  set_ec_state(EC_STATE_PRE_OP);
   ec_close();
   return 0;
 }

@@ -38,6 +38,7 @@ typedef struct JointsRead
 #pragma pack()
 
 uint16 to_ctrl_word(uint16 state_word);
+int8_t set_ec_state(ec_state sta);
 int8_t ec_elmo_init(char *ifname);
 
 #endif
