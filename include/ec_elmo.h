@@ -17,16 +17,7 @@
 #define MODE_CST (10)
 
 #pragma pack(1)
-typedef struct JointsWrite
-{
-  int32 target_position;
-  int32 target_velocity;
-  int16 target_torque;
-  uint16 control_word;
-  int16 mode_of_opration;
-} JointsWrite;
-
-typedef struct JointsRead
+typedef struct MotorsRead
 {
   int32 position_actual_value;
   uint32 digital_inputs;
@@ -34,10 +25,19 @@ typedef struct JointsRead
   uint16 status_word;
   int16 torque_actual_value;
   int16 mode_of_opration_display;
-} JointsRead;
+} MotorsRead;
+
+typedef struct MotorsWrite
+{
+  int32 target_position;
+  int32 target_velocity;
+  int16 target_torque;
+  uint16 control_word;
+  int16 mode_of_opration;
+} MotorsWrite;
 #pragma pack()
 
-uint16 to_ctrl_word(uint16 state_word);
+uint16 ctrlWord(uint16 state_word);
 int8_t set_ec_state(ec_state sta);
 int8_t ec_elmo_init(char *ifname);
 

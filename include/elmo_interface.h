@@ -11,8 +11,8 @@ typedef struct
   double_t torque;
 } JointParam_t;
 
-int8_t hard_init();
-int8_t hard_exit();
+int8_t device_init();
+int8_t device_close();
 
 int8_t set_joint_position(uint8_t *ids, uint8_t id_num, JointParam_t *param);
 int8_t set_joint_velocity(uint8_t *ids, uint8_t id_num, JointParam_t *param);

@@ -6,34 +6,38 @@
 #include "ec_elmo.h"
 
 #define EC_TIMEOUTMON 500
+#define BIT_17 (1 << 17)
 #define BIT_19 (1 << 19)
 #define BIT_20 (1 << 20)
+#define BIT_17_9 (BIT_17 * 9)
 
-char IOmap[4096];
-OSAL_THREAD_HANDLE thread_check;
-OSAL_THREAD_HANDLE thread_sync;
-pthread_mutex_t mtx_IOMap;
-int expectedWKC;
-volatile int wkc;
-boolean inOP;
-uint8 _sync_running = 0;
-uint8 currentgroup = 0;
-int oloop, iloop;
-int error_num = 0; //全局错误标识
-uint8 joint_num = 1;
+uint8 motor_number = 1;
 
+uint32_t rated_current[12] = {0};
 uint32_t encoder_range[12] = {
-    BIT_20, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20,
+    BIT_17_9, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20,
     BIT_19, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20};
 
-double JonitLimitmax[] = {180, 90, 120, 65, 75, 220, 45, 60, 120, 120, 105, 110};
-double JonitLimitmin[] = {0, 30, -60, -60, -40, 0, 15, 0, -60, 25, -5, -110};
-uint32_t rated_current[12] = {0};
+double motor_limit_min[] = {-360, -360, -360, -360, -360, -360, -360, -360, -360, -360, -360, -360};
+double motor_limit_max[] = {360, 360, 360, 360, 360, 360, 360, 360, 360, 360, 360, 360};
 
-struct JointsRead *JointI[12];
-struct JointsWrite *JointO[12];
+struct MotorsRead *MotorI[12];
+struct MotorsWrite *MotorO[12];
 
-uint16 to_ctrl_word(uint16 state_word) //状态字到控制字
+pthread_mutex_t mtx_IOMap;
+uint8 _sync_running = 0;
+static int _setup_err = 0; // 错误标识
+
+static char IOmap[4096];
+static OSAL_THREAD_HANDLE thread_check;
+static OSAL_THREAD_HANDLE thread_sync;
+static int expectedWKC;
+static volatile int wkc;
+static boolean inOP;
+static uint8 currentgroup = 0;
+static int oloop, iloop;
+
+uint16 ctrlWord(uint16 state_word) //状态字到控制字
 {
   if (!(state_word & (1 << STATUSWORD_OPERATION_ENABLE_BIT)))
   {
@@ -148,7 +152,7 @@ int sdf_setup(uint16 slave) //六维力设置
   if (wkc != wc)
   {
     printf("Slave %d GSV-8 setup Failed!!!  wc:%d  wkc:%d\n", slave, wc, wkc);
-    error_num = 1;
+    _setup_err = 1;
     return -1;
   }
   return 0;
@@ -171,14 +175,13 @@ int elmo_setup(uint16 slave)
     id = 0;
   }
 
-  //Non-modulo motion.
-  pmin = JonitLimitmin[id];
+  pmin = motor_limit_min[id];
   value_i32 = (int32)(pmin * (encoder_range[id] / 360.0));
   sdo_write_i32(slave, 0x607D, 1, value_i32); //Min Software position limit VL[3]
   value_i32 = (int32)(pmin * (encoder_range[id] / 360.0)) - 1;
   sdo_write_i32(slave, 0x607B, 1, value_i32); //Min Position range limit xm[1]
 
-  pmax = JonitLimitmax[id];
+  pmax = motor_limit_max[id];
   value_i32 = (int32)(pmax * (encoder_range[id] / 360.0));
   sdo_write_i32(slave, 0x607D, 2, value_i32); //Max Software position limit VH[3]
   value_i32 = (int32)(pmax * (encoder_range[id] / 360.0)) + 1;
@@ -195,27 +198,22 @@ int elmo_setup(uint16 slave)
     check_cnt++;
     if (check_cnt > 100)
     {
-      printf("Read position failed of joint%d!\n", id + 1);
+      printf("Read position failed of motor %d!\n", id + 1);
       ec_close();
       exit(0);
     }
     osal_usleep(1000);
   } while (wkc == 0);
-  printf("Joint%d\t  Start_Angle: %3.1f\t ", id + 1, pos);
 
   if (pos > 360)
   {
-    error_num = 3;
-    printf(" >360\n");
+    _setup_err = 2;
+    printf("Motor %d position > 360\n", id + 1);
   }
-  else if (pos < 0)
+  else if (pos < -360)
   {
-    error_num = 3;
-    printf(" <0\n");
-  }
-  else
-  {
-    printf(" OK\n");
+    _setup_err = 2;
+    printf("Motor %d position < -360\n", id + 1);
   }
 
   // rated current
@@ -229,17 +227,17 @@ int elmo_setup(uint16 slave)
     check_cnt++;
     if (check_cnt > 100)
     {
-      printf("Read rated current failed of joint%d!\n", id + 1);
+      printf("Read rated current failed of motor %d!\n", id + 1);
       ec_close();
       exit(0);
     }
     osal_usleep(1000);
   } while (wkc == 0);
-  // printf("Joint%d\t  rated current: %d\n ", id + 1, value_u32);
+  printf("Motor %d actual position: %3.1f, rated current: %d\n", id + 1, pos, value_u32);
 
   wkc = 0, wc = 0;
   //PDO Map set by SOD
-  //JointsWrite
+  //MotorsWrite
   wkc += sdo_write_u8(slave, 0x1C12, 0, 0);
   wc++;
   wkc += sdo_write_u16(slave, 0x1C12, 1, 0x160F);
@@ -255,7 +253,7 @@ int elmo_setup(uint16 slave)
   wkc += sdo_write_u16(slave, 0x1C12, 0, 5);
   wc++;
 
-  //JointsRead
+  //MotorsRead
   wkc += sdo_write_u8(slave, 0x1C13, 0, 0);
   wc++;
   wkc += sdo_write_u16(slave, 0x1C13, 1, 0x1A03);
@@ -272,7 +270,7 @@ int elmo_setup(uint16 slave)
   if (wkc != wc)
   {
     printf("Slave %d setup Failed!!!  wc:%d  wkc:%d \n", slave, wc, wkc);
-    error_num = 4;
+    _setup_err = 3;
     return -1;
   }
   return 0;
@@ -352,7 +350,7 @@ int16_t elmo_config(char *ifname)
   ec_config_map(&IOmap);
   ec_configdc();
 
-  if (error_num != 0)
+  if (_setup_err != 0)
     return 3;
 
   oloop = ec_slave[0].Obytes;
@@ -467,18 +465,18 @@ OSAL_THREAD_FUNC ecatcheck(void *ptr)
   }
 }
 
-int16 joint_is_error()
+int16 motor_is_error()
 {
   uint16 SWord;
   uint16 index, value_u16;
   uint8 subindex, value_u8;
-  for (int i = 0; i < joint_num; i++)
+  for (int i = 0; i < motor_number; i++)
   {
-    SWord = JointI[i]->status_word;
+    SWord = MotorI[i]->status_word;
     SWord = SWord & 0x6f;
     if (SWord != 0x27)
     {
-      printf("Joint %d state error, status_word:0x%x\n", i + 1, JointI[i]->status_word);
+      printf("Motor %d state error, status_word:0x%x\n", i + 1, MotorI[i]->status_word);
       index = 0x1001, subindex = 0;
       sdo_read_u8(i + 1, index, subindex, &value_u8);
       printf("0x%x:%d=0x%x\n", index, subindex, value_u8);
@@ -502,7 +500,7 @@ OSAL_THREAD_FUNC_RT sync_thread(void *ptr)
     pthread_mutex_lock(&mtx_IOMap);
     ec_send_processdata();
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
-    if (joint_is_error())
+    if (motor_is_error())
     {
       pthread_mutex_unlock(&mtx_IOMap);
       set_ec_state(EC_STATE_PRE_OP);
@@ -519,18 +517,21 @@ OSAL_THREAD_FUNC_RT sync_thread(void *ptr)
 
 int8 structural_map()
 {
-  int jrl = sizeof(JointsRead);
-  int jwl = sizeof(JointsWrite);
-  if (oloop == jwl && iloop == jrl) // 关节结构体映射
+  int rl = sizeof(MotorsRead);
+  int wl = sizeof(MotorsWrite);
+  if (oloop == (wl * motor_number) && iloop == (rl * motor_number)) // 结构体映射
   {
-    JointI[0] = (struct JointsRead *)(ec_slave[0].inputs);
-    JointO[0] = (struct JointsWrite *)(ec_slave[0].outputs);
+    for (uint32_t i = 0; i < motor_number; i++)
+    {
+      MotorI[i] = (struct MotorsRead *)(ec_slave[0].inputs + rl * i);
+      MotorO[i] = (struct MotorsWrite *)(ec_slave[0].outputs + wl * i);
+    }
     return 0;
   }
   return 1;
 }
 
-int8 single_joint_enable(uint16 id)
+int8 single_motor_enable(uint16 id)
 {
   if (id < 1)
   {
@@ -538,40 +539,40 @@ int8 single_joint_enable(uint16 id)
     return 1;
   }
   uint16 SWord;
-  JointO[id - 1]->mode_of_opration = MODE_CSP;
-  JointO[id - 1]->target_position = JointI[id - 1]->position_actual_value;
-  JointO[id - 1]->target_velocity = 0;
-  JointO[id - 1]->target_torque = 0;
-  SWord = JointI[id - 1]->status_word & 0x6f;
-  JointO[id - 1]->control_word = to_ctrl_word(SWord);
+  MotorO[id - 1]->mode_of_opration = MODE_CSP;
+  MotorO[id - 1]->target_position = MotorI[id - 1]->position_actual_value;
+  MotorO[id - 1]->target_velocity = 0;
+  MotorO[id - 1]->target_torque = 0;
+  SWord = MotorI[id - 1]->status_word & 0x6f;
+  MotorO[id - 1]->control_word = ctrlWord(SWord);
   ec_send_processdata();
   wkc = ec_receive_processdata(EC_TIMEOUTRET);
   if (SWord == 0x27)
   {
-    printf("Joint %d enable success!\n", id);
+    printf("Motor %d enable success!\n", id);
     return 0;
   }
   else
     return 2;
 }
 
-int8 joint_enable(void)
+int8 motor_enable(void)
 {
   int8 result = 0;
-  printf("Wait %d all joint enable...\n", joint_num);
+  printf("Wait %d all motor enable...\n", motor_number);
   osal_usleep(1000);
-  for (int j = 1; j <= joint_num; j++)
+  for (int j = 1; j <= motor_number; j++)
   {
     for (int c = 0; c < 5000; c++)
     {
-      result = single_joint_enable(j);
+      result = single_motor_enable(j);
       if (result == 0)
         break;
       osal_usleep(1000);
     }
     if (result != 0)
     {
-      printf("Wait joint %d enable failed!\n", j);
+      printf("Wait motor %d enable failed!\n", j);
       return 1;
     }
   }
@@ -594,7 +595,7 @@ int8_t ec_elmo_init(char *ifname)
     printf("structural map failed, return %d\n", ret);
     return 2;
   }
-  ret = joint_enable();
+  ret = motor_enable();
   if (ret != 0)
   {
     return 3;
@@ -603,7 +604,7 @@ int8_t ec_elmo_init(char *ifname)
   osal_thread_create_rt(&thread_sync, 204800, &sync_thread, NULL);
   if (ret != 0)
   {
-    printf("joint enable failed, return %d\n", ret);
+    printf("motor enable failed, return %d\n", ret);
     return 4;
   }
   return 0;
