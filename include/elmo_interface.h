@@ -8,6 +8,7 @@ typedef struct
 {
   double_t position;
   double_t velocity;
+  double_t acceleration;
   double_t torque;
 } JointParam_t;
 

@@ -205,16 +205,16 @@ int elmo_setup(uint16 slave)
     osal_usleep(1000);
   } while (wkc == 0);
 
-  if (pos > 360)
-  {
-    _setup_err = 2;
-    printf("Motor %d position > 360\n", id + 1);
-  }
-  else if (pos < -360)
-  {
-    _setup_err = 2;
-    printf("Motor %d position < -360\n", id + 1);
-  }
+  // if (pos > 360)
+  // {
+  //   _setup_err = 2;
+  //   printf("Motor %d position > 360\n", id + 1);
+  // }
+  // else if (pos < -360)
+  // {
+  //   _setup_err = 2;
+  //   printf("Motor %d position < -360\n", id + 1);
+  // }
 
   // rated current
   check_cnt = 0;
@@ -583,29 +583,33 @@ int8_t ec_elmo_init(char *ifname)
 {
   int16_t ret = 0;
   _sync_running = 1;
-  osal_thread_create(&thread_check, 128000, &ecatcheck, (void *)&ctime);
+  ret = osal_thread_create(&thread_check, 128000, &ecatcheck, (void *)&ctime);
+  if (ret != 1)
+  {
+    return 1;
+  }
   ret = elmo_config(ifname);
   if (ret != 0)
   {
-    return 1;
+    return 2;
   }
   ret = structural_map();
   if (ret != 0)
   {
     printf("structural map failed, return %d\n", ret);
-    return 2;
+    return 3;
   }
   ret = motor_enable();
   if (ret != 0)
   {
-    return 3;
-  }
-  pthread_mutex_init(&mtx_IOMap, NULL);
-  osal_thread_create_rt(&thread_sync, 204800, &sync_thread, NULL);
-  if (ret != 0)
-  {
     printf("motor enable failed, return %d\n", ret);
     return 4;
+  }
+  pthread_mutex_init(&mtx_IOMap, NULL);
+  ret = osal_thread_create_rt(&thread_sync, 204800, &sync_thread, NULL);
+  if (ret != 1)
+  {
+    return 5;
   }
   return 0;
 }
