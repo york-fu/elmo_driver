@@ -12,12 +12,12 @@
 #define BIT_17_9 (BIT_17 * 9)
 #define ELMO_MAX 12
 
-double position_limit_min[] = {-360, -360, -360, -360, -360, -360, -360, -360, -360, -360, -360, -360};
-double position_limit_max[] = {360, 360, 360, 360, 360, 360, 360, 360, 360, 360, 360, 360};
+double position_limit_min[] = {-3600, -3600, -3600, -3600, -3600, -3600, -3600, -3600, -3600, -3600, -3600, -3600};
+double position_limit_max[] = {3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600};
 
 uint32_t encoder_range[ELMO_MAX] = {
-    BIT_17_9, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20,
-    BIT_19, BIT_19, BIT_19, BIT_19, BIT_19, BIT_20};
+    BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9,
+    BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9, BIT_17_9};
 
 uint32_t rated_current[ELMO_MAX] = {0};
 
