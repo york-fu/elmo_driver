@@ -7,22 +7,19 @@ Elmo driver based on [soem v1.4.0](https://github.com/OpenEtherCATsociety/SOEM/t
 ### download
 
 ```
-git clone https://www.lejuhub.com/fuyou/ethercat_elmo.git
+# ssh
+git clone ssh://git@www.lejuhub.com:10026/fuyou/elmo_driver.git
+# https
+git clone https://www.lejuhub.com/fuyou/elmo_driver.git
 ```
 
-### build
+### run example
 
 ```
-cd ethercat_elmo/
+cd elmo_driver/
 mkdir build && cd build
-cmake ..
+cmake -DEXAMPLE ..
 make -j`nproc`
-```
-
-### run
-
-```
-cd ethercat_elmo/build/
 sudo su
 ./test/elmo_test
 ```
