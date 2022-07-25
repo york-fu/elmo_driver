@@ -1,96 +1,102 @@
 #include "elmo_motor.h"
 
-extern pthread_mutex_t mtx_IOMap;
-extern uint8_t _sync_running;
-extern uint32_t encoder_range[12];
-extern uint32_t rated_current[12];
-extern struct ELMOsRead *elmoI[12];
-extern struct ELMOsWrite *elmoO[12];
+extern pthread_mutex_t mtx;
+extern uint32 _encoder_range[NUM_SLAVE_MAX];
+extern uint32 _rated_current[NUM_SLAVE_MAX];
+extern struct ELMORead *elmoI[NUM_SLAVE_MAX];
+extern struct ELMOWrite *elmoO[NUM_SLAVE_MAX];
 
-static double_t motorOffset[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static double position_offset[NUM_SLAVE_MAX] = {0};
 
-int8_t elmoInit()
+int8_t EM_init(const char *ifname, double dt, MotorOptions_t opt)
 {
   int8_t ret = 0, err_code = 1;
-  ret = ec_elmo_init("enp2s0");
+  ret = elmo_init(ifname, dt, opt);
   if (ret != 0)
   {
-    printf("elmo init failed! return %d\n", ret);
-    return err_code;
+    printf("Failed to elmo init! return %d\n", ret);
+    return -1;
   }
   return 0;
 }
 
-int8_t elmoDeInit()
+int8_t EM_deInit()
 {
-  _sync_running = 0;
-  osal_usleep(2000);
-  elmo_set_state(EC_STATE_INIT);
-  ec_close();
-  return 0;
+  return elmo_deinit();
 }
 
-int8_t setJointOffset(double_t *offset, uint16_t len)
+int8_t EM_setPositionsOffset(double *offset, uint16_t len)
 {
   for (uint16_t i = 0; i < len; i++)
   {
-    motorOffset[i] = offset[i];
+    position_offset[i] = offset[i];
   }
 }
 
-int8_t setJointPosition(uint8_t *ids, uint8_t id_num, JointParam_t *param)
+int8_t EM_setPositions(uint8_t *ids, uint8_t num, MotorParam_t *param)
 {
-  pthread_mutex_lock(&mtx_IOMap);
-  for (uint8_t i = 0; i < id_num; i++)
+  uint16_t index;
+  pthread_mutex_lock(&mtx);
+  for (uint8_t i = 0; i < num; i++)
   {
-    elmoO[ids[i] - 1]->target_position = (param[ids[i] - 1].position + motorOffset[ids[i] - 1]) * (encoder_range[ids[i] - 1] / 360.0);
-    elmoO[ids[i] - 1]->position_offset = param[ids[i] - 1].positionOffset * (encoder_range[ids[i] - 1] / 360.0);
-    elmoO[ids[i] - 1]->velocit_offset = param[ids[i] - 1].velocityOffset * (encoder_range[ids[i] - 1] / 360.0);
-    elmoO[ids[i] - 1]->torque_offset = param[ids[i] - 1].torqueOffset * (1000.0 / rated_current[ids[i] - 1]) * 1000;
-    elmoO[ids[i] - 1]->mode_of_opration = MODE_CSP;
-    elmoO[ids[i] - 1]->control_word = ctrlWord(elmoI[ids[i] - 1]->status_word & 0x6f);
+    index = ids[i] - 1;
+    elmoO[index]->target_position = (param[index].position + position_offset[index]) * (_encoder_range[index] / 360.0);
+    elmoO[index]->position_offset = param[index].positionOffset * (_encoder_range[index] / 360.0);
+    elmoO[index]->velocit_offset = param[index].velocityOffset * (_encoder_range[index] / 360.0);
+    elmoO[index]->torque_offset = param[index].torqueOffset * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->max_torque = param[index].maxTorque * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->mode_of_opration = MODE_CSP;
+    elmoO[index]->control_word = ctrlWord(elmoI[index]->status_word & 0x6f);
   }
-  pthread_mutex_unlock(&mtx_IOMap);
+  pthread_mutex_unlock(&mtx);
   return 0;
 }
 
-int8_t setJointVelocity(uint8_t *ids, uint8_t id_num, JointParam_t *param)
+int8_t EM_setVelocities(uint8_t *ids, uint8_t num, MotorParam_t *param)
 {
-  pthread_mutex_lock(&mtx_IOMap);
-  for (uint8_t i = 0; i < id_num; i++)
+  uint16_t index;
+  pthread_mutex_lock(&mtx);
+  for (uint8_t i = 0; i < num; i++)
   {
-    elmoO[ids[i] - 1]->target_velocity = param[ids[i] - 1].velocity * (encoder_range[ids[i] - 1] / 360.0);
-    elmoO[ids[i] - 1]->velocit_offset = param[ids[i] - 1].velocityOffset * (encoder_range[ids[i] - 1] / 360.0);
-    elmoO[ids[i] - 1]->torque_offset = param[ids[i] - 1].torqueOffset * (1000.0 / rated_current[ids[i] - 1]) * 1000;
-    elmoO[ids[i] - 1]->mode_of_opration = MODE_CSV;
-    elmoO[ids[i] - 1]->control_word = ctrlWord(elmoI[ids[i] - 1]->status_word & 0x6f);
+    index = ids[i] - 1;
+    elmoO[index]->target_velocity = param[index].velocity * (_encoder_range[index] / 360.0);
+    elmoO[index]->velocit_offset = param[index].velocityOffset * (_encoder_range[index] / 360.0);
+    elmoO[index]->torque_offset = param[index].torqueOffset * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->max_torque = param[index].maxTorque * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->mode_of_opration = MODE_CSV;
+    elmoO[index]->control_word = ctrlWord(elmoI[index]->status_word & 0x6f);
   }
-  pthread_mutex_unlock(&mtx_IOMap);
+  pthread_mutex_unlock(&mtx);
   return 0;
 }
 
-int8_t setJointTorque(uint8_t *ids, uint8_t id_num, JointParam_t *param)
+int8_t EM_setTorques(uint8_t *ids, uint8_t num, MotorParam_t *param)
 {
-  pthread_mutex_lock(&mtx_IOMap);
-  for (uint8_t i = 0; i < id_num; i++)
+  uint16_t index;
+  pthread_mutex_lock(&mtx);
+  for (uint8_t i = 0; i < num; i++)
   {
-    elmoO[ids[i] - 1]->target_torque = param[ids[i] - 1].torque * (1000.0 / rated_current[ids[i] - 1]) * 1000;
-    elmoO[ids[i] - 1]->torque_offset = param[ids[i] - 1].torqueOffset * (1000.0 / rated_current[ids[i] - 1]) * 1000;
-    elmoO[ids[i] - 1]->mode_of_opration = MODE_CST;
-    elmoO[ids[i] - 1]->control_word = ctrlWord(elmoI[ids[i] - 1]->status_word & 0x6f);
+    index = ids[i] - 1;
+    elmoO[index]->target_torque = param[index].torque * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->torque_offset = param[index].torqueOffset * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->max_torque = param[index].maxTorque * (1000.0 / _rated_current[index]) * 1000;
+    elmoO[index]->mode_of_opration = MODE_CST;
+    elmoO[index]->control_word = ctrlWord(elmoI[index]->status_word & 0x6f);
   }
-  pthread_mutex_unlock(&mtx_IOMap);
+  pthread_mutex_unlock(&mtx);
   return 0;
 }
 
-int8_t getJointData(uint8_t *ids, uint8_t id_num, JointParam_t *data)
+int8_t EM_getData(uint8_t *ids, uint8_t num, MotorParam_t *data)
 {
-  pthread_mutex_lock(&mtx_IOMap);
-  for (uint8_t i = 0; i < id_num; i++)
+  uint16_t index;
+  pthread_mutex_lock(&mtx);
+  for (uint8_t i = 0; i < num; i++)
   {
-    data[i].position = elmoI[ids[i] - 1]->position_actual_value * (360.0 / encoder_range[ids[i] - 1]) - motorOffset[ids[i] - 1];
-    data[i].velocity = elmoI[ids[i] - 1]->velocity_actual_value * (360.0 / encoder_range[ids[i] - 1]);
-    data[i].torque = elmoI[ids[i] - 1]->torque_actual_value * (rated_current[ids[i] - 1] / 1000.0) / 1000.0;
+    index = ids[i] - 1;
+    data[i].position = elmoI[index]->position_actual_value * (360.0 / _encoder_range[index]) - position_offset[index];
+    data[i].velocity = elmoI[index]->velocity_actual_value * (360.0 / _encoder_range[index]);
+    data[i].torque = elmoI[index]->torque_actual_value * (_rated_current[index] / 1000.0) / 1000.0;
   }
-  pthread_mutex_unlock(&mtx_IOMap);
+  pthread_mutex_unlock(&mtx);
 }

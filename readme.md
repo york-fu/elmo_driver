@@ -1,16 +1,17 @@
-# elmo driver
+# Elmo driver
 
-### describe
+### Describe
 
-Elmo driver based on [soem v1.4.0](https://github.com/OpenEtherCATsociety/SOEM/tree/v1.4.0)
+Elmo driver based on [SOEM](https://github.com/OpenEtherCATsociety/SOEM), commit: 9b6ebd6e43e03be461c5eab803a74786319a14db
 
-### run example
+### Run example
 
 ```
-mkdir build && cd build
-cmake -DEXAMPLE ..
+mkdir build
+cd build
+cmake -DEXAMPLE=ON ..
 make -j`nproc`
 
-sudo su
-./test/elmo_test
+# Use root run
+./example/elmo_example
 ```
