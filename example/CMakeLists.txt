@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.4)
-project(elmo_example C)
+project(elmo_ecm_example C)
 
 include_directories(.)
 aux_source_directory(. EXAMPLE_SRCS)

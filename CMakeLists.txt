@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.4)
-project(elmo C)
+project(elmo_ecm C)
 
 option(EXAMPLE "build example" OFF)
 
