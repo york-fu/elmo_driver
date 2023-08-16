@@ -1,150 +1,61 @@
 #include "util.h"
 
-double get_sin_wave(double A, double T, double b, double dt)
+double sin_wave(WaveParam_t *wp, double t)
 {
-  static double time = 0, out = 0;
-  out = A * sin(2 * M_PI / T * time) + b;
-  time += dt;
-  if (time >= T) // prevention overflow
-  {
-    time = 0;
-  }
-  return out;
+  return wp->A * sin(2 * M_PI / wp->T * t) + wp->b;
 }
 
-double get_cos_wave(double A, double T, double b, double dt)
+double cos_wave(WaveParam_t *wp, double t)
 {
-  static double time = 0, out = 0;
-  out = A * -cos(2 * M_PI / T * time) + b + A;
-  time += dt;
-  if (time >= T) // prevention overflow
-  {
-    time = 0;
-  }
-  return out;
+  return wp->A * -cos(2 * M_PI / wp->T * t) + wp->b + wp->A;
 }
 
-double get_square_wave(double A, double T, double b, double dt)
+double square_wave(WaveParam_t *wp, double t)
 {
-  static double time = 0, out = 0;
-  if (time < (T / 2.0))
+  double v = 0;
+  if (t < (wp->T / 2.0))
   {
-    out = A + b;
+    v = wp->A + wp->b;
   }
   else
   {
-    out = -A + b;
+    v = -wp->A + wp->b;
   }
-  time += dt;
-  if (time >= T)
-  {
-    time = 0;
-  }
-  return out;
+  return v;
 }
 
-double get_triangular_wave(double A, double T, double b, double dt)
+double triangular_wave(WaveParam_t *wp, double t)
 {
-  static double time = 0, out = 0;
-  if (time < (T / 2.0))
+  double v = 0;
+  if (t < (wp->T / 2.0))
   {
-    out = (A / (T / 2.0)) * time + b;
+    v = (wp->A / (wp->T / 2.0)) * t + wp->b;
   }
   else
   {
-    out = (A / (T / 2.0)) * (T - time) + b;
+    v = (wp->A / (wp->T / 2.0)) * (wp->T - t) + wp->b;
   }
-  time += dt;
-  if (time >= T)
-  {
-    time = 0;
-  }
-  return out;
+  return v;
 }
 
-void average_filter(double *data, uint32_t size, double *result)
+double P_controller(PIDParam_t *pid, double err)
 {
-  double sum = 0;
-  for (uint32_t i = 0; i < size - 1; i++)
+  for (uint16_t i = 0; i < 2; i++)
   {
-    data[i] = data[i + 1];
-    sum += data[i + 1];
+    pid->err[i] = pid->err[i + 1];
   }
-  data[size - 1] = *result;
-  sum += *result;
-  *result = (sum / size);
+  pid->err[2] = err;
+  return pid->kp * pid->err[2];
 }
 
-void median_filter(double *data, uint32_t size, double *result)
+double PI_controller(PIDParam_t *pid, double err)
 {
-  double sort_data[size];
-  for (uint32_t i = 0; i < size - 1; i++)
+  for (uint16_t i = 0; i < 2; i++)
   {
-    data[i] = data[i + 1];
-    sort_data[i] = data[i];
+    pid->err[i] = pid->err[i + 1];
   }
-  data[size - 1] = *result;
-  sort_data[size - 1] = data[size - 1];
-
-  uint32_t i, j;
-  double temp;
-  for (j = 0; j < size - 1; j++)
-  {
-    for (i = 0; i < size - j - 1; i++)
-    {
-      if (sort_data[i] < sort_data[i + 1])
-      {
-        temp = sort_data[i];
-        sort_data[i] = sort_data[i + 1];
-        sort_data[i + 1] = temp;
-      }
-    }
-  }
-
-  if ((size & 1) > 0)
-  {
-    *result = sort_data[(size - 1) / 2];
-  }
-  else
-  {
-    *result = (sort_data[size / 2 - 1] + sort_data[size / 2]) / 2.0;
-  }
-}
-
-void median_average_filter(double *data, uint32_t size, double *result)
-{
-  if (size > 4)
-  {
-    double sort_data[size];
-    for (uint32_t i = 0; i < size - 1; i++)
-    {
-      data[i] = data[i + 1];
-      sort_data[i] = data[i];
-    }
-    data[size - 1] = *result;
-    sort_data[size - 1] = data[size - 1];
-
-    uint32_t i, j;
-    double temp;
-    for (j = 0; j < size - 1; j++)
-    {
-      for (i = 0; i < size - j - 1; i++)
-      {
-        if (sort_data[i] < sort_data[i + 1])
-        {
-          temp = sort_data[i];
-          sort_data[i] = sort_data[i + 1];
-          sort_data[i + 1] = temp;
-        }
-      }
-    }
-
-    double sum = 0;
-    for (uint32_t i = 2; i < size - 2; i++)
-    {
-      sum += sort_data[i];
-    }
-
-    *result = sum / (size - 4);
-  }
+  pid->err[2] = err;
+  pid->intergral += pid->err[2];
+  pid->intergral = LIMITING(pid->intergral, pid->intergral_lim[0], pid->intergral_lim[1]);
+  return pid->kp * pid->err[2] + pid->ki * pid->intergral;
 }

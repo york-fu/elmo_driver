@@ -7,11 +7,7 @@
 #include <inttypes.h>
 #include "ethercat.h"
 
-#define NUM_SLAVE_MAX 20
-
-#define MODE_CSP (8)
-#define MODE_CSV (9)
-#define MODE_CST (10)
+#define NUM_SLAVE_MAX 32
 
 #pragma pack(1)
 typedef struct ELMORead
@@ -22,7 +18,7 @@ typedef struct ELMORead
   uint16 status_word;
   int16 torque_actual_value;
   int16 mode_of_opration_display;
-} ELMORead;
+} ELMORead_t;
 
 typedef struct ELMOWrite
 {
@@ -32,23 +28,33 @@ typedef struct ELMOWrite
   uint16 max_torque;
   uint16 control_word;
   int16 mode_of_opration;
-  int32_t position_offset;
-  int32_t velocit_offset;
-  int16_t torque_offset;
-} ELMOWrite;
+  int32 position_offset;
+  int32 velocity_offset;
+  int16 torque_offset;
+} ELMOWrite_t;
 #pragma pack()
 
 typedef struct
 {
-  uint16_t size;
-  uint32_t *encoder_range;
-  uint8_t position_limit;
-  double *position_limit_min;
-  double *position_limit_max;
-} MotorOptions_t;
+  char ifname[16];
+  double dt;
+} ECMConfig_t;
 
-uint16 ctrlWord(uint16 state_word);
-int8 elmo_init(const char *ifname, double dt, MotorOptions_t opt);
-int8 elmo_deinit();
+typedef struct
+{
+  uint16_t num;
+  uint8_t sw_check;
+  double circle_unit;
+  double gear;
+  double offset[NUM_SLAVE_MAX];
+  uint32_t range[NUM_SLAVE_MAX];
+  uint32_t rated_current[NUM_SLAVE_MAX];
+} MotorConfig_t;
+
+pthread_mutex_t *ec_elmo_get_mtx();
+int8_t ec_elmo_get_data_ptr(ELMORead_t **in, ELMOWrite_t **out);
+
+int8_t ec_elmo_init(ECMConfig_t ec_cfg, MotorConfig_t *m_cfg);
+int8_t ec_elmo_deinit();
 
 #endif
