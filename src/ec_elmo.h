@@ -1,3 +1,13 @@
+/**
+ * @file ec_elmo.h
+ * @author york (york-fu@outlook.com)
+ * @brief 
+ * @version 0.1
+ * @date 2021-09-09
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
 #ifndef _ec_elmo_h_
 #define _ec_elmo_h_
 

@@ -1,3 +1,13 @@
+/**
+ * @file main.c
+ * @author york (york-fu@outlook.com)
+ * @brief Example of elmo's ecm
+ * @version 0.1
+ * @date 2021-09-09
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
 #include <signal.h>
 #include <unistd.h>
 #include "elmo_motor.h"

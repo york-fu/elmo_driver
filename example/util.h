@@ -1,3 +1,13 @@
+/**
+ * @file util.h
+ * @author york (york-fu@outlook.com)
+ * @brief 
+ * @version 0.1
+ * @date 2021-09-09
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
 #ifndef _util_h_
 #define _util_h_
 

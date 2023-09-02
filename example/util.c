@@ -1,3 +1,13 @@
+/**
+ * @file util.c
+ * @author york (york-fu@outlook.com)
+ * @brief 
+ * @version 0.1
+ * @date 2021-09-09
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
 #include "util.h"
 
 double sin_wave(WaveParam_t *wp, double t)
