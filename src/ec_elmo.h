@@ -1,12 +1,12 @@
 /**
  * @file ec_elmo.h
  * @author york (york-fu@outlook.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2021-09-09
- * 
+ *
  * @copyright Copyright (c) 2023
- * 
+ *
  */
 #ifndef _ec_elmo_h_
 #define _ec_elmo_h_
@@ -17,7 +17,7 @@
 #include <inttypes.h>
 #include "ethercat.h"
 
-#define NUM_SLAVE_MAX 32
+#define NUM_SLAVE_MAX 64
 
 #pragma pack(1)
 typedef struct ELMORead
@@ -53,18 +53,15 @@ typedef struct
 typedef struct
 {
   uint16_t num;
-  uint8_t sw_check;
+  uint8_t enable;
   double circle_unit;
-  double gear;
-  double offset[NUM_SLAVE_MAX];
-  uint32_t range[NUM_SLAVE_MAX];
   uint32_t rated_current[NUM_SLAVE_MAX];
+  double gear[NUM_SLAVE_MAX];
+  uint32_t range[NUM_SLAVE_MAX];
+  double offset[NUM_SLAVE_MAX];
 } MotorConfig_t;
 
-pthread_mutex_t *ec_elmo_get_mtx();
-int8_t ec_elmo_get_data_ptr(ELMORead_t **in, ELMOWrite_t **out);
-
-int8_t ec_elmo_init(ECMConfig_t ec_cfg, MotorConfig_t *m_cfg);
-int8_t ec_elmo_deinit();
+int8_t elmo_init(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg);
+int8_t elmo_deinit();
 
 #endif

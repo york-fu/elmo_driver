@@ -1,33 +1,38 @@
 /**
  * @file ec_elmo.c
  * @author york (york-fu@outlook.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2021-09-09
- * 
+ *
  * @copyright Copyright (c) 2023
- * 
+ *
  */
+#include <stdio.h>
+#include <string.h>
+#include "osal.h"
+#include "ethercat.h"
 #include "ec_elmo.h"
 
 #define EC_TIMEOUTMON 500
 
-char IOmap[4096];
-OSAL_THREAD_HANDLE thread_ecatcheck;
-OSAL_THREAD_HANDLE thread_sync;
-int expectedWKC;
-volatile int wkc;
-boolean inOP;
-uint8 currentgroup = 0;
-int oloop, iloop;
+static char IOmap[4096];
+static uint8 currentgroup = 0;
+static volatile int wkc;
+static int expectedWKC;
+static int oloop, iloop;
+static boolean inOP;
 
-static MotorConfig_t *motor_cfg;
-static uint8_t running = 0;
-static pthread_mutex_t mtx;
+static OSAL_THREAD_HANDLE thread1, thread2;
+static uint8_t th_run = 0;
+pthread_mutex_t mtx_pdo;
+
 struct ELMORead *elmoI[NUM_SLAVE_MAX];
 struct ELMOWrite *elmoO[NUM_SLAVE_MAX];
 
-int elmo_PDOconfig(uint16 slave)
+static MotorConfig_t *motor_cfg = NULL;
+
+static int elmo_setup(uint16 slave)
 {
   uint8 u8val;
   uint16 u16val;
@@ -73,7 +78,7 @@ int elmo_PDOconfig(uint16 slave)
 
   if (wkc != wkc_ref)
   {
-    printf("Failed to PDO config, at %d, wkc: %d, wkc ref: %d\n", slave, wkc, wkc_ref);
+    printf("Failed to PDO config, Motor %d, wkc: %d, wkc ref: %d\n", slave, wkc, wkc_ref);
     ec_close();
     exit(0);
   }
@@ -82,9 +87,9 @@ int elmo_PDOconfig(uint16 slave)
   int32 i32val = 0;
   uint32 u32val = 0;
   uint16 chk;
-  wkc = 0;
 
   chk = 100;
+  wkc = 0;
   while (!wkc && (chk--))
   {
     rdl = sizeof(i32val), i32val = 0;
@@ -97,12 +102,13 @@ int elmo_PDOconfig(uint16 slave)
   }
   else
   {
-    printf("Failedto read rated current, at %d\n", slave);
+    printf("Failedto read rated current, Motor %d\n", slave);
     ec_close();
     exit(0);
   }
 
   chk = 100;
+  wkc = 0;
   while (!wkc && (chk--))
   {
     rdl = sizeof(i32val), i32val = 0;
@@ -111,11 +117,11 @@ int elmo_PDOconfig(uint16 slave)
   }
   if (chk != 0)
   {
-    printf("Initial position %f, at %d\n", (double)i32val / (motor_cfg->range[slave - 1] * motor_cfg->gear) * motor_cfg->circle_unit, slave);
+    printf("Motor %d actual pos %d / %f\n", slave, i32val, (double)i32val / (motor_cfg->range[slave - 1] * motor_cfg->gear[slave - 1]) * motor_cfg->circle_unit);
   }
   else
   {
-    printf("Failedto read position, at %d\n", slave);
+    printf("Failedto read position, Motor %d\n", slave);
   }
 
   motor_cfg->num++;
@@ -123,58 +129,24 @@ int elmo_PDOconfig(uint16 slave)
   return 0;
 }
 
-void setup_hook()
+static int8_t elmo_map()
 {
-  for (uint16_t i = 1; i <= ec_slavecount; i++)
+  int rl = sizeof(struct ELMORead);
+  int wl = sizeof(struct ELMOWrite);
+  if (oloop == (wl * motor_cfg->num) && iloop == (rl * motor_cfg->num))
   {
-    if ((ec_slave[i].eep_man == 0x9a) && (ec_slave[i].eep_id == 0x30924))
+    for (uint32_t i = 0; i < motor_cfg->num; i++)
     {
-      ec_slave[i].PO2SOconfig = &elmo_PDOconfig;
+      elmoI[i] = (struct ELMORead *)(ec_slave[0].inputs + rl * i);
+      elmoO[i] = (struct ELMOWrite *)(ec_slave[0].outputs + wl * i);
     }
-  }
-}
-
-int8 set_ec_state(ec_state state)
-{
-  int chk;
-  ec_slave[0].state = state;
-  /* request OP state for all slaves */
-  ec_writestate(0);
-  pthread_mutex_lock(&mtx);
-  ec_send_processdata();
-  ec_receive_processdata(EC_TIMEOUTRET);
-  pthread_mutex_unlock(&mtx);
-  chk = 20;
-  /* wait for all slaves to reach OP state */
-  do
-  {
-    pthread_mutex_lock(&mtx);
-    ec_send_processdata();
-    ec_receive_processdata(EC_TIMEOUTRET);
-    pthread_mutex_unlock(&mtx);
-    ec_statecheck(0, state, 50000);
-  } while (chk-- && (ec_slave[0].state != state));
-
-  if (ec_slave[0].state == state)
-  {
     return 0;
   }
-  return 1;
+  printf("Failed to map. num: %d, wl: %d, rl %d\n", motor_cfg->num, wl * motor_cfg->num, rl * motor_cfg->num);
+  return -1;
 }
 
-pthread_mutex_t *ec_elmo_get_mtx()
-{
-  return &mtx;
-}
-
-int8_t ec_elmo_get_data_ptr(ELMORead_t **in, ELMOWrite_t **out)
-{
-  in = elmoI;
-  out = elmoO;
-  return 0;
-}
-
-int8_t sw_check()
+static int8_t check_enable()
 {
   uint16_t index, sw;
   for (uint8_t i = 0; i < motor_cfg->num; i++)
@@ -202,29 +174,11 @@ int8_t sw_check()
   return 0;
 }
 
-int8 structural_map()
-{
-  int rl = sizeof(struct ELMORead);
-  int wl = sizeof(struct ELMOWrite);
-  if (oloop == (wl * motor_cfg->num) && iloop == (rl * motor_cfg->num))
-  {
-    for (uint32_t i = 0; i < motor_cfg->num; i++)
-    {
-      elmoI[i] = (struct ELMORead *)(ec_slave[0].inputs + rl * i);
-      elmoO[i] = (struct ELMOWrite *)(ec_slave[0].outputs + wl * i);
-    }
-    return 0;
-  }
-  printf("Failed to structural map\n");
-  return -1;
-}
-
 OSAL_THREAD_FUNC ecatcheck(void *ptr)
 {
   int slave;
-  (void)ptr; /* Not used */
 
-  while (running)
+  while (th_run)
   {
     if (inOP && ((wkc < expectedWKC) || ec_group[currentgroup].docheckstate))
     {
@@ -291,26 +245,31 @@ OSAL_THREAD_FUNC ecatcheck(void *ptr)
   }
 }
 
-OSAL_THREAD_FUNC sync_thread(void *ptr)
+OSAL_THREAD_FUNC rt_thread(void *ptr)
 {
   double dt = *(double *)ptr;
   printf("Ethercat synchronization period: %f\n", dt);
+
   struct timespec next_time;
   clock_gettime(CLOCK_MONOTONIC, &next_time);
-  while (running)
+  while (th_run)
   {
-    pthread_mutex_lock(&mtx);
+    pthread_mutex_lock(&mtx_pdo);
     ec_send_processdata();
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
-    pthread_mutex_unlock(&mtx);
+    pthread_mutex_unlock(&mtx_pdo);
 
-    if (motor_cfg->sw_check)
+    if (motor_cfg->enable)
     {
-      if (sw_check() != 0)
+      if (check_enable() != 0)
       {
-        set_ec_state(EC_STATE_PRE_OP);
+        ec_slave[0].state = EC_STATE_INIT;
+        ec_writestate(0);
+        inOP = FALSE;
         ec_close();
+        th_run = 0;
         exit(EXIT_FAILURE);
+        return;
       }
     }
 
@@ -320,28 +279,37 @@ OSAL_THREAD_FUNC sync_thread(void *ptr)
   }
 }
 
-int8_t ec_elmo_init(ECMConfig_t ec_cfg, MotorConfig_t *m_cfg)
+int8_t elmo_init(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg)
 {
-  /* initialise SOEM, bind socket to ifname */
-  if (!ec_init(ec_cfg.ifname))
+  motor_cfg = m_cfg;
+
+  if (!ec_init(ec_cfg->ifname))
   {
-    printf("No socket connection on %s\nExecute as root\n", ec_cfg.ifname);
+    printf("No socket connection on %s\nExcecute as root\n", ec_cfg->ifname);
     return -1;
   }
-  printf("ec_init on %s succeeded.\n", ec_cfg.ifname);
+  printf("ec_init on %s succeeded.\n", ec_cfg->ifname);
 
-  /* find and auto-config slaves */
   if (ec_config_init(FALSE) < 1)
   {
-    ec_close();
     printf("No slaves found!\n");
+    ec_close();
     return -2;
   }
   printf("%d slaves found and configured.\n", ec_slavecount);
 
-  motor_cfg = m_cfg;
   motor_cfg->num = 0;
-  setup_hook();
+  if (ec_slavecount > 0)
+  {
+    for (uint16_t slc = 1; slc <= ec_slavecount; slc++)
+    {
+      if ((ec_slave[slc].eep_man == 0x9a) && (ec_slave[slc].eep_id == 0x30924))
+      {
+        ec_slave[slc].PO2SOconfig = &elmo_setup;
+      }
+    }
+  }
+
   ec_config_map(&IOmap);
   ec_configdc();
 
@@ -358,42 +326,70 @@ int8_t ec_elmo_init(ECMConfig_t ec_cfg, MotorConfig_t *m_cfg)
   expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
   printf("oloop:%d  iloop:%d  expectedWKC:%d\n", oloop, iloop, expectedWKC);
 
+  /* send one valid process data to make outputs in slaves happy*/
+  ec_send_processdata();
+  ec_receive_processdata(EC_TIMEOUTRET);
+
   printf("Request operational state for all slaves\n");
-  if (set_ec_state(EC_STATE_OPERATIONAL) != 0)
+  ec_slave[0].state = EC_STATE_OPERATIONAL;
+  /* request OP state for all slaves */
+  ec_writestate(0);
+  int chk = 100;
+  /* wait for all slaves to reach OP state */
+  do
   {
-    return -4;
+    ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
+  } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+
+  if (ec_slave[0].state != EC_STATE_OPERATIONAL)
+  {
+    printf("Not all slaves reached operational state.\n");
+    ec_readstate();
+    for (uint16_t i = 1; i <= ec_slavecount; i++)
+    {
+      if (ec_slave[i].state != EC_STATE_OPERATIONAL)
+      {
+        printf("Slave %d State=0x%2.2x StatusCode=0x%4.4x : %s\n",
+               i, ec_slave[i].state, ec_slave[i].ALstatuscode, ec_ALstatuscode2string(ec_slave[i].ALstatuscode));
+      }
+    }
+    ec_close();
+    return -3;
   }
   printf("Operational state reached for all slaves.\n");
   inOP = TRUE;
 
-  running = 1;
+  if (elmo_map() != 0)
+  {
+    return -4;
+  }
 
+  th_run = 1;
   int ret = 0;
-  ret = osal_thread_create(&thread_ecatcheck, 128000, &ecatcheck, (void *)&ctime);
+  ret = osal_thread_create(&thread1, 128000, &ecatcheck, (void *)&ctime);
   if (ret != 1)
   {
     printf("Failed to create 'ecatcheck' thread, return %d\n", ret);
-    return -3;
+    return -5;
   }
 
-  ret = osal_thread_create_rt(&thread_sync, 204800, &sync_thread, (void *)(&ec_cfg.dt));
+  ret = osal_thread_create_rt(&thread2, 204800, &rt_thread, (void *)(&ec_cfg->dt));
   if (ret != 1)
   {
-    printf("Failed to create 'sync_thread' thread, return %d\n", ret);
-    return -3;
+    printf("Failed to create 'rt_thread' thread, return %d\n", ret);
+    return -6;
   }
-  osal_usleep(1000);
-
-  structural_map();
 
   return 0;
 }
 
-int8_t ec_elmo_deinit()
+int8_t elmo_deinit()
 {
-  running = 0;
-  osal_usleep(1000 * 5);
-  set_ec_state(EC_STATE_INIT);
+  th_run = 0;
+  osal_usleep(5000);
+  ec_slave[0].state = EC_STATE_INIT;
+  ec_writestate(0);
+  inOP = FALSE;
   ec_close();
   return 0;
 }
