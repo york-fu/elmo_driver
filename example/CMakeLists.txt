@@ -24,5 +24,5 @@ target_link_libraries(sampling ecm_elmo -lm)
 set(SRCS 
   ./util.c
 )
-add_executable(pc_loop_ctrl ${SRCS} pc_loop_ctrl.c)
-target_link_libraries(pc_loop_ctrl ecm_elmo -lm)
+add_executable(cascade_ctrl ${SRCS} cascade_ctrl.c)
+target_link_libraries(cascade_ctrl ecm_elmo -lm)

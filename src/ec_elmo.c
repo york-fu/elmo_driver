@@ -117,7 +117,7 @@ static int elmo_setup(uint16 slave)
   }
   if (chk != 0)
   {
-    printf("Motor %d actual pos %d / %f\n", slave, i32val, (double)i32val / (motor_cfg->range[slave - 1] * motor_cfg->gear[slave - 1]) * motor_cfg->circle_unit);
+    printf("Motor %d actual pos %d / %f\n", slave, i32val, (double)i32val / (motor_cfg->pos_enc_range[slave - 1] * motor_cfg->gear[slave - 1]) * motor_cfg->circle_unit);
   }
   else
   {
@@ -151,6 +151,10 @@ static int8_t check_enable()
   uint16_t index, sw;
   for (uint8_t i = 0; i < motor_cfg->num; i++)
   {
+    if (!motor_cfg->enable[i])
+    {
+      continue;
+    }
     sw = elmoI[i]->status_word & 0x6f;
     if (sw != 0x27)
     {
@@ -259,18 +263,15 @@ OSAL_THREAD_FUNC rt_thread(void *ptr)
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
     pthread_mutex_unlock(&mtx_pdo);
 
-    if (motor_cfg->enable)
+    if (check_enable() != 0)
     {
-      if (check_enable() != 0)
-      {
-        ec_slave[0].state = EC_STATE_INIT;
-        ec_writestate(0);
-        inOP = FALSE;
-        ec_close();
-        th_run = 0;
-        exit(EXIT_FAILURE);
-        return;
-      }
+      ec_slave[0].state = EC_STATE_INIT;
+      ec_writestate(0);
+      inOP = FALSE;
+      ec_close();
+      th_run = 0;
+      exit(EXIT_FAILURE);
+      return;
     }
 
     next_time.tv_sec += (next_time.tv_nsec + dt * 1e9) / 1e9;
@@ -392,4 +393,37 @@ int8_t elmo_deinit()
   inOP = FALSE;
   ec_close();
   return 0;
+}
+
+void motor_cfg_print(MotorConfig_t *cfg, uint32_t num)
+{
+  printf("circle unit: %f\n", cfg->circle_unit);
+
+  printf("gear: [");
+  for (uint16_t i = 0; i < num - 1; i++)
+  {
+    printf("%f, ", cfg->gear[i]);
+  }
+  printf("%f]\n", cfg->gear[num - 1]);
+
+  printf("pos enc range: [");
+  for (uint16_t i = 0; i < num - 1; i++)
+  {
+    printf("%d, ", cfg->pos_enc_range[i]);
+  }
+  printf("%d]\n", cfg->pos_enc_range[num - 1]);
+
+  printf("vel enc range: [");
+  for (uint16_t i = 0; i < num - 1; i++)
+  {
+    printf("%d, ", cfg->vel_enc_range[i]);
+  }
+  printf("%d]\n", cfg->vel_enc_range[num - 1]);
+
+  printf("pos offset: [");
+  for (uint16_t i = 0; i < num - 1; i++)
+  {
+    printf("%f, ", cfg->pos_offset[i]);
+  }
+  printf("%f]\n", cfg->pos_offset[num - 1]);
 }
