@@ -69,9 +69,20 @@ int main(int argc, char *argv[])
     return -2;
   }
 
+  uint8_t ids[NUM_MOTOR_MAX];
+  MotorData_t m_data[NUM_MOTOR_MAX];
+  for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)
+  {
+    ids[i] = i + 1;
+  }
+
   while (1)
   {
-    osal_usleep(5000);
+    em_get_data(ids, NUM_MOTOR_MAX, m_data);
+    printf("pos: %.3f, vel: %.3f, cur: %.3f\n",
+           m_data[0].pos, m_data[0].vel, m_data[0].tau);
+
+    osal_usleep(1000 * 500);
   }
 
   return 0;
