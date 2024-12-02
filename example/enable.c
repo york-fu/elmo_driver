@@ -13,8 +13,8 @@
 #include "elmo_motor.h"
 
 #define NUM_MOTOR_MAX 6
-#define BIT_17 (1 << 14)
-#define BIT_14 (1 << 17)
+#define BIT_14 (1 << 14)
+#define BIT_17 (1 << 17)
 
 MotorConfig_t motor_cfg;
 
