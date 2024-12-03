@@ -265,9 +265,9 @@ int8_t em_set_positions(uint8_t *ids, uint8_t num, MotorData_t *data)
   for (uint8_t i = 0; i < num; i++)
   {
     index = ids[i] - 1;
-    elmoO[index].target_position = (data[index].pos + motor_cfg->pos_offset[index]) * (motor_cfg->pos_enc_range[index] * motor_cfg->gear[index] / motor_cfg->circle_unit);
-    elmoO[index].position_offset = data[index].pos_ff * (motor_cfg->pos_enc_range[index] * motor_cfg->gear[index] / motor_cfg->circle_unit);
-    elmoO[index].velocity_offset = data[index].vel_ff * (motor_cfg->vel_enc_range[index] * motor_cfg->gear[index] / motor_cfg->circle_unit);
+    elmoO[index].target_position = (data[index].pos + motor_cfg->pos_offset[index]) * motor_cfg->pos_factor[index];
+    elmoO[index].position_offset = data[index].pos_ff * motor_cfg->pos_factor[index];
+    elmoO[index].velocity_offset = data[index].vel_ff * motor_cfg->vel_factor[index];
     elmoO[index].torque_offset = data[index].tau_ff * (1000.0 / motor_cfg->rated_current[index]) * 1000;
     elmoO[index].max_torque = data[index].max_tau * (1000.0 / motor_cfg->rated_current[index]) * 1000;
     elmoO[index].mode_of_opration = MODE_CSP;
@@ -284,8 +284,8 @@ int8_t em_set_velocities(uint8_t *ids, uint8_t num, MotorData_t *data)
   for (uint8_t i = 0; i < num; i++)
   {
     index = ids[i] - 1;
-    elmoO[index].target_velocity = data[index].vel * (motor_cfg->vel_enc_range[index] * motor_cfg->gear[index] / motor_cfg->circle_unit);
-    elmoO[index].velocity_offset = data[index].vel_ff * (motor_cfg->vel_enc_range[index] * motor_cfg->gear[index] / motor_cfg->circle_unit);
+    elmoO[index].target_velocity = data[index].vel * motor_cfg->vel_factor[index];
+    elmoO[index].velocity_offset = data[index].vel_ff * motor_cfg->vel_factor[index];
     elmoO[index].torque_offset = data[index].tau_ff * (1000.0 / motor_cfg->rated_current[index]) * 1000;
     elmoO[index].max_torque = data[index].max_tau * (1000.0 / motor_cfg->rated_current[index]) * 1000;
     elmoO[index].mode_of_opration = MODE_CSV;
@@ -319,8 +319,8 @@ int8_t em_get_data(uint8_t *ids, uint8_t num, MotorData_t *data)
   for (uint8_t i = 0; i < num; i++)
   {
     index = ids[i] - 1;
-    data[i].pos = elmoI[index].position_actual_value * (motor_cfg->circle_unit / (motor_cfg->pos_enc_range[index] * motor_cfg->gear[index])) - motor_cfg->pos_offset[index];
-    data[i].vel = elmoI[index].velocity_actual_value * (motor_cfg->circle_unit / (motor_cfg->vel_enc_range[index] * motor_cfg->gear[index]));
+    data[i].pos = elmoI[index].position_actual_value / motor_cfg->pos_factor[index] - motor_cfg->pos_offset[index];
+    data[i].vel = elmoI[index].velocity_actual_value / motor_cfg->vel_factor[index];
     data[i].tau = elmoI[index].torque_actual_value * (motor_cfg->rated_current[index] / 1000.0) / 1000.0;
   }
   pthread_mutex_unlock(&mtx_pdo);

@@ -271,14 +271,12 @@ int8_t load_config(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg)
   ec_cfg->dt = 5e-4;
 
   m_cfg->num = 0;
-  m_cfg->circle_unit = 360;
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)
   {
-    m_cfg->gear[i] = 1;
-    m_cfg->pos_enc_range[i] = BIT_17;
-    m_cfg->vel_enc_range[i] = BIT_14;
-    m_cfg->pos_offset[i] = 0;
     m_cfg->enable[i] = 0;
+    m_cfg->pos_offset[i] = 0;
+    m_cfg->pos_factor[i] = BIT_17 / 360.0;
+    m_cfg->vel_factor[i] = BIT_14 * 35.05 / 360.0;
   }
 
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)

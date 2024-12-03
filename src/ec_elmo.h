@@ -53,13 +53,11 @@ typedef struct
 typedef struct
 {
   uint16_t num;
-  double gear[NUM_SLAVE_MAX];
-  double circle_unit;
-  uint32_t pos_enc_range[NUM_SLAVE_MAX];
-  uint32_t vel_enc_range[NUM_SLAVE_MAX];
-  uint32_t rated_current[NUM_SLAVE_MAX];
-  double pos_offset[NUM_SLAVE_MAX];
   uint8_t enable[NUM_SLAVE_MAX];
+  double pos_offset[NUM_SLAVE_MAX];
+  double pos_factor[NUM_SLAVE_MAX];
+  double vel_factor[NUM_SLAVE_MAX];
+  uint32_t rated_current[NUM_SLAVE_MAX];
 } MotorConfig_t;
 
 int8_t elmo_init(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg);

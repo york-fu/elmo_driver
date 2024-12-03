@@ -56,8 +56,8 @@ void load_controller_parameters()
   {
     v_ctl[i].intergral_lim[0] = -1e3;
     v_ctl[i].intergral_lim[1] = 1e3;
-    v_ctl[i].kp = 0.05;
-    v_ctl[i].ki = 0;
+    v_ctl[i].kp = 0.1;
+    v_ctl[i].ki = 0.005;
 
     p_ctl[i].intergral_lim[0] = -1e3;
     p_ctl[i].intergral_lim[1] = 1e3;
@@ -224,7 +224,7 @@ void pd_test(const MotorData_t *m_data, const MotorData_t *m_data2,
   wp.A = 90;
   wp.T = 4;
 
-  double kp = 2, kd = 0.01;
+  double kp = 100 / 57.296, kd = 4 / 57.296;
   for (uint16_t i = 0; i < motor_cfg.num; i++)
   {
     wp.b = initial_pos[i];
@@ -315,7 +315,8 @@ OSAL_THREAD_FUNC_RT control_thread(void *ptr)
   while (th_run)
   {
     update_data(m_data, m_data2, dt);
-    csp_test(m_data, m_data2, m_data_d, m_data_d2, dt);
+    // csp_test(m_data, m_data2, m_data_d, m_data_d2, dt);
+    pd_test(m_data, m_data2, m_data_d, m_data_d2, dt);
 
     next_time.tv_sec += (next_time.tv_nsec + dt * 1e9) / 1e9;
     next_time.tv_nsec = (int)(next_time.tv_nsec + dt * 1e9) % (int)1e9;
@@ -337,14 +338,12 @@ int8_t load_config(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg)
   ec_cfg->dt = 5e-4;
 
   m_cfg->num = 0;
-  m_cfg->circle_unit = 360;
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)
   {
-    m_cfg->gear[i] = 1;
-    m_cfg->pos_enc_range[i] = BIT_17;
-    m_cfg->vel_enc_range[i] = BIT_14;
-    m_cfg->pos_offset[i] = 0;
     m_cfg->enable[i] = 0;
+    m_cfg->pos_offset[i] = 0;
+    m_cfg->pos_factor[i] = BIT_17 / 360.0;
+    m_cfg->vel_factor[i] = BIT_14 * 35.05 / 360.0;
   }
 
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)

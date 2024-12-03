@@ -62,7 +62,7 @@ void set_vel(double vel, MotorData_t *data, MotorData_t *data2, double dt)
 void pd_contorl(const MotorData_t *m_data, const MotorData_t *m_data2,
                 MotorData_t *m_data_d, MotorData_t *m_data_d2, double dt)
 {
-  double kp = 2, kd = 0.01;
+  double kp = 100 / 57.296, kd = 4 / 57.296;
   for (uint16_t i = 0; i < motor_cfg.num; i++)
   {
     set_pos(initial_pos[i], &m_data_d[i], &m_data_d2[i], dt);
@@ -107,14 +107,12 @@ int8_t load_config(ECMConfig_t *ec_cfg, MotorConfig_t *m_cfg)
   ec_cfg->dt = 5e-4;
 
   m_cfg->num = 0;
-  m_cfg->circle_unit = 360;
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)
   {
-    m_cfg->gear[i] = 1;
-    m_cfg->pos_enc_range[i] = BIT_17;
-    m_cfg->vel_enc_range[i] = BIT_14;
-    m_cfg->pos_offset[i] = 0;
     m_cfg->enable[i] = 0;
+    m_cfg->pos_offset[i] = 0;
+    m_cfg->pos_factor[i] = BIT_17 / 360.0;
+    m_cfg->vel_factor[i] = BIT_14 * 35.05 / 360.0;
   }
 
   for (uint16_t i = 0; i < NUM_MOTOR_MAX; i++)

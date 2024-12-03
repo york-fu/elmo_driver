@@ -117,7 +117,7 @@ static int elmo_setup(uint16 slave)
   }
   if (chk != 0)
   {
-    printf("Motor %d actual pos %d / %f\n", slave, i32val, (double)i32val / (motor_cfg->pos_enc_range[slave - 1] * motor_cfg->gear[slave - 1]) * motor_cfg->circle_unit);
+    printf("Motor %d actual pos %d / %f\n", slave, i32val, (double)i32val / motor_cfg->pos_factor[slave - 1]);
   }
   else
   {
@@ -397,28 +397,19 @@ int8_t elmo_deinit()
 
 void motor_cfg_print(MotorConfig_t *cfg, uint32_t num)
 {
-  printf("circle unit: %f\n", cfg->circle_unit);
-
-  printf("gear: [");
+  printf("pos factor: [");
   for (uint16_t i = 0; i < num - 1; i++)
   {
-    printf("%f, ", cfg->gear[i]);
+    printf("%f, ", cfg->pos_factor[i]);
   }
-  printf("%f]\n", cfg->gear[num - 1]);
+  printf("%f]\n", cfg->pos_factor[num - 1]);
 
-  printf("pos enc range: [");
+  printf("vel factor: [");
   for (uint16_t i = 0; i < num - 1; i++)
   {
-    printf("%d, ", cfg->pos_enc_range[i]);
+    printf("%f, ", cfg->vel_factor[i]);
   }
-  printf("%d]\n", cfg->pos_enc_range[num - 1]);
-
-  printf("vel enc range: [");
-  for (uint16_t i = 0; i < num - 1; i++)
-  {
-    printf("%d, ", cfg->vel_enc_range[i]);
-  }
-  printf("%d]\n", cfg->vel_enc_range[num - 1]);
+  printf("%f]\n", cfg->vel_factor[num - 1]);
 
   printf("pos offset: [");
   for (uint16_t i = 0; i < num - 1; i++)
